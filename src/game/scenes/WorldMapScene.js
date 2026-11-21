@@ -679,22 +679,48 @@ export default class WorldMapScene extends Phaser.Scene {
         this.zoomValue.setText(next.toFixed(2) + '×');
     }
 
+    
     interact() {
+      // Đóng bảng đơn hàng nếu đang mở
         if (this.modalOpen) {
             this.closeModal();
             return;
         }
-        const distance = Phaser.Math.Distance.Between(
-            this.witch.x, this.witch.y, MAILBOX.x, MAILBOX.y
+
+        // Tương tác với hòm thư
+        const distanceMailbox = Phaser.Math.Distance.Between(
+            this.witch.x,
+            this.witch.y,
+            MAILBOX.x,
+            MAILBOX.y
         );
-        if (distance <= 95) {
+
+        if (distanceMailbox <= 95) {
             this.modalOpen = true;
             this.resetJoystick();
+
             this.modalBg.setVisible(true);
             this.modalText.setVisible(true);
             this.modalClose.setVisible(true);
+            return;
         }
+
+    // Tương tác với cửa Tiệm thuốc
+    const doorX = SHOP.x;
+    const doorY = SHOP.y + 65;
+
+    const distanceDoor = Phaser.Math.Distance.Between(
+        this.witch.x,
+        this.witch.y,
+        doorX,
+        doorY
+    );
+
+    if (distanceDoor <= 55) {
+        this.scene.start('ShopInteriorScene');
     }
+}
+
 
     closeModal() {
         this.modalOpen = false;
