@@ -3,23 +3,26 @@ import Phaser from 'phaser';
 
 const ROOM_W = 1448;
 const ROOM_H = 1086;
+const MAX_VIEW_W = 1320;
+const MAX_VIEW_H = 800;
+const CAMERA_FOLLOW_LERP = 0.18;
+const CAMERA_LOOK_UP = 64;
+const HUD_MARGIN = 16;
 
 const DOOR = {
     x: 724,
     y: 980
 };
+const SPAWN = { position: { x: 724, y: 967 }, facing: 'up' };
 
-const WITCH_SCALE = 3.2;
+const WITCH_SCALE = 2.5;
 const DEBUG_COLLISION = false;
 
 export default class ShopInteriorScene extends Phaser.Scene {
+    #workstationView;
+
     constructor() {
         super('ShopInteriorScene');
-    }
-
-    // Nhan vi tri khi quay ve tu giao dien thao tac
-    init(data) {
-        this.returnPosition = data.returnPosition || null;
     }
 
     preload() {
@@ -48,10 +51,11 @@ export default class ShopInteriorScene extends Phaser.Scene {
     }
 
     create() {
-        this.cameras.main.setBackgroundColor('#211627');
+        const camera = this.cameras.main;
+        camera.setBackgroundColor('#211627');
 
         // Anh noi that da chot
-        this.add.image(
+        const room = this.add.image(
             0,
             0,
             'shopInteriorBg'
@@ -66,8 +70,10 @@ export default class ShopInteriorScene extends Phaser.Scene {
 
         this.speed = 185;
 
-        this.facing =
-            this.returnPosition?.facing || 'up';
+        this.gameState = this.registry.get('gameState');
+        const returningFromWorkstation = this.gameState.getPlayer().currentScene === 'WorkstationScene';
+        const { position, facing } = this.gameState.enterScene('ShopInteriorScene', SPAWN);
+        this.facing = facing;
 
         // Chi giu va cham voi vat can lon
         this.blockers = [
@@ -194,23 +200,20 @@ export default class ShopInteriorScene extends Phaser.Scene {
             }
         }
 
-        // Neu quay ve tu tram lam viec:
-        // dung dung tai vi tri cu
-        const start = this.returnPosition || {
-            x: 724,
-            y: 967,
-            facing: 'up'
-        };
-
         this.witch = this.add.sprite(
-            start.x,
-            start.y,
+            position.x,
+            position.y,
             this.facing,
             0
         )
             .setOrigin(0.5, 1)
             .setScale(WITCH_SCALE)
             .setDepth(10);
+
+        camera.setBounds(0, 0, ROOM_W, ROOM_H);
+        camera.startFollow(this.witch, true, CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_LERP, 0, CAMERA_LOOK_UP);
+        this.uiCamera = this.cameras.add();
+        this.uiCamera.ignore([room, this.witch]);
 
         // Giao dien
         const uiStyle = {
@@ -225,25 +228,27 @@ export default class ShopInteriorScene extends Phaser.Scene {
         };
 
         this.hint = this.add.text(
-            ROOM_W / 2,
-            52,
+            0,
+            0,
             '',
             uiStyle
         )
-            .setOrigin(0.5)
+            .setOrigin(0)
             .setDepth(100);
 
         this.exitButton = this.add.text(
-            ROOM_W - 125,
-            52,
+            0,
+            0,
             'RA NGOÀI',
             uiStyle
         )
-            .setOrigin(0.5)
+            .setOrigin(1, 0)
             .setDepth(100)
             .setInteractive({
                 useHandCursor: true
             });
+
+        camera.ignore([this.hint, this.exitButton]);
 
         this.exitButton.on('pointerdown', () => {
             this.leaveShop();
@@ -253,6 +258,7 @@ export default class ShopInteriorScene extends Phaser.Scene {
         if (DEBUG_COLLISION) {
             const dbg = this.add.graphics()
                 .setDepth(50);
+            this.uiCamera.ignore(dbg);
 
             // Mau do: khu vuc bi chan
             dbg.lineStyle(
@@ -286,6 +292,12 @@ export default class ShopInteriorScene extends Phaser.Scene {
             }
         }
 
+        const view = this.#workstationView;
+        this.#workstationView = undefined;
+        if (returningFromWorkstation && view &&
+            view.playerX === position.x && view.playerY === position.y && view.facing === facing) {
+            camera.centerOn(view.centerX, view.centerY);
+        }
         this.resizeScene(this.scale.gameSize);
 
         this.scale.on(
@@ -307,25 +319,20 @@ export default class ShopInteriorScene extends Phaser.Scene {
     }
 
     // Dieu chinh camera
-    resizeScene(size) {
+    resizeScene({ width, height }) {
+        if (width <= 0 || height <= 0) return;
+
         const camera = this.cameras.main;
+        const { x, y } = camera.midPoint;
+        camera.setSize(width, height);
+        // Keep the visible world smaller than the room on both axes.
+        camera.setZoom(Math.max(width / MAX_VIEW_W, height / MAX_VIEW_H));
+        camera.setDeadzone(camera.displayWidth * 0.18, camera.displayHeight * 0.14);
+        camera.centerOn(x, y);
 
-        camera.setSize(
-            size.width,
-            size.height
-        );
-
-        camera.setZoom(
-            Math.min(
-                size.width / ROOM_W,
-                size.height / ROOM_H
-            )
-        );
-
-        camera.centerOn(
-            ROOM_W / 2,
-            ROOM_H / 2
-        );
+        this.uiCamera.setSize(width, height);
+        this.hint.setPosition(HUD_MARGIN, HUD_MARGIN);
+        this.exitButton.setPosition(width - HUD_MARGIN, HUD_MARGIN);
     }
 
     // Kiem tra va cham theo ban chan
@@ -399,28 +406,23 @@ export default class ShopInteriorScene extends Phaser.Scene {
             return;
         }
 
-        // Luu vi tri phu thuy truoc khi chuyen scene
+        const { x, y } = this.cameras.main.midPoint;
+        this.#workstationView = {
+            centerX: x,
+            centerY: y,
+            playerX: this.witch.x,
+            playerY: this.witch.y,
+            facing: this.facing
+        };
         this.scene.start(
             'WorkstationScene',
-            {
-                station: point.id,
-                returnPosition: {
-                    x: this.witch.x,
-                    y: this.witch.y,
-                    facing: this.facing
-                }
-            }
+            { station: point.id }
         );
     }
 
     // Ra khoi Tiem thuoc
     leaveShop() {
-        this.scene.start(
-            'WorldMapScene',
-            {
-                fromShop: true
-            }
-        );
+        this.scene.start('WorldMapScene');
     }
 
     // Cap nhat di chuyen
@@ -506,6 +508,7 @@ export default class ShopInteriorScene extends Phaser.Scene {
                 `walk_${this.facing}`,
                 true
             );
+            this.gameState.updatePlayerPose('ShopInteriorScene', this.witch, this.facing);
 
         } else {
             this.witch.anims.stop();

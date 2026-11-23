@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 
 const W = 960;
 const H = 640;
+const SPAWN = { position: { x: 724, y: 960 }, facing: 'up' };
 
 const STATIONS = {
     brewing: {
@@ -28,16 +29,10 @@ export default class WorkstationScene extends Phaser.Scene {
         super('WorkstationScene');
     }
 
-    init(data) {
-        this.stationId = STATIONS[data.station]
-            ? data.station
-            : 'brewing';
-
-        this.returnPosition = data.returnPosition || {
-            x: 724,
-            y: 960,
-            facing: 'up'
-        };
+    init(data = {}) {
+        this.gameState = this.registry.get('gameState');
+        const station = Object.hasOwn(STATIONS, data.station) ? data.station : undefined;
+        this.stationId = this.gameState.enterScene('WorkstationScene', SPAWN, station).station;
     }
 
     create() {
@@ -234,12 +229,7 @@ export default class WorkstationScene extends Phaser.Scene {
 
     // Tro ve dung vi tri cu trong tiem
     goBack() {
-        this.scene.start(
-            'ShopInteriorScene',
-            {
-                returnPosition: this.returnPosition
-            }
-        );
+        this.scene.start('ShopInteriorScene');
     }
 
     update() {

@@ -34,12 +34,17 @@ export default class GameScene extends Phaser.Scene {
 
         const width = this.scale.width;
         const height = this.scale.height;
+        this.gameState = this.registry.get('gameState');
+        const { position, facing } = this.gameState.enterScene('GameScene', {
+            position: { x: width / 2, y: height / 2 },
+            facing: 'down'
+        });
 
         // Tạo nhân vật ở giữa màn hình
         this.witch = this.add.sprite(
-            width / 2,
-            height / 2,
-            'down',
+            position.x,
+            position.y,
+            facing,
             0
         );
 
@@ -71,7 +76,7 @@ export default class GameScene extends Phaser.Scene {
         this.keys = this.input.keyboard.addKeys('W,A,S,D,E');
 
         this.speed = 160;
-        this.direction = 'down';
+        this.direction = facing;
 
         this.createJoystick();
         this.createBackButton();
@@ -306,6 +311,7 @@ export default class GameScene extends Phaser.Scene {
             halfHeight,
             Math.max(halfHeight, height - halfHeight)
         );
+        this.gameState.updatePlayerPose('GameScene', this.witch, this.direction);
     }
 
     update(time, delta) {

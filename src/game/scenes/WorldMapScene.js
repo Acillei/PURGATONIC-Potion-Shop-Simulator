@@ -141,8 +141,9 @@ export default class WorldMapScene extends Phaser.Scene {
         this.colliders = [];
         this.lastFogX = null;
         this.lastFogY = null;
-        this.spawn = { x: SHOP_PATH_START.x + 5, y: SHOP_PATH_START.y + 55 };
-        this.facing = 'down';
+        this.gameState = this.registry.get('gameState');
+        const { position, facing } = this.gameState.enterScene('WorldMapScene');
+        this.facing = facing;
         this.joyX = 85;
         this.joyY = 300;
         this.joyRadius = 42;
@@ -178,8 +179,8 @@ export default class WorldMapScene extends Phaser.Scene {
         this.mailboxSprite.setDepth(this.mailboxSprite.y);
 
 
-        this.witch = this.add.sprite(this.spawn.x, this.spawn.y, 'down', 0)
-            .setScale(1.5).setDepth(this.spawn.y);
+        this.witch = this.add.sprite(position.x, position.y, facing, 0)
+            .setScale(1.5).setDepth(position.y);
         for (const dir of ['down', 'up', 'left', 'right']) {
             const name = 'walk_' + dir;
             if (!this.anims.exists(name)) {
@@ -766,6 +767,9 @@ export default class WorldMapScene extends Phaser.Scene {
             } else {
                 this.witch.anims.stop();
                 this.witch.setTexture(this.facing, 0);
+            }
+            if (this.witch.x !== oldX || this.witch.y !== oldY) {
+                this.gameState.updatePlayerPose('WorldMapScene', this.witch, this.facing);
             }
         } else {
             this.witch.anims.stop();
