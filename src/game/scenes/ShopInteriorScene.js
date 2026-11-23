@@ -1,22 +1,15 @@
 
 import Phaser from 'phaser';
 
-const ROOM_W = 1448;
-const ROOM_H = 1086;
-const MAX_VIEW_W = 1320;
-const MAX_VIEW_H = 800;
-const CAMERA_FOLLOW_LERP = 0.18;
-const CAMERA_LOOK_UP = 64;
+import { createExplorationCamera } from '../exploration/ExplorationCamera.js';
+import { createExplorationControls, facingFor, movementVector } from '../exploration/ExplorationControls.js';
+import { createExplorationDebug } from '../exploration/ExplorationDebug.js';
+import { createCollision, findInteraction } from '../exploration/ExplorationGeometry.js';
+import { ROOM_H, ROOM_W, SHOP_SPAWN, shopGeometry } from '../maps/shopInteriorData.js';
+
+const WITCH_SCALE = 3.0;
+const WITCH_FOOT_ORIGIN = 62 / 64;
 const HUD_MARGIN = 16;
-
-const DOOR = {
-    x: 724,
-    y: 980
-};
-const SPAWN = { position: { x: 724, y: 967 }, facing: 'up' };
-
-const WITCH_SCALE = 2.5;
-const DEBUG_COLLISION = false;
 
 export default class ShopInteriorScene extends Phaser.Scene {
     #workstationView;
@@ -51,8 +44,7 @@ export default class ShopInteriorScene extends Phaser.Scene {
     }
 
     create() {
-        const camera = this.cameras.main;
-        camera.setBackgroundColor('#211627');
+        this.cameras.main.setBackgroundColor('#211627');
 
         // Anh noi that da chot
         const room = this.add.image(
@@ -72,107 +64,10 @@ export default class ShopInteriorScene extends Phaser.Scene {
 
         this.gameState = this.registry.get('gameState');
         const returningFromWorkstation = this.gameState.getPlayer().currentScene === 'WorkstationScene';
-        const { position, facing } = this.gameState.enterScene('ShopInteriorScene', SPAWN);
+        const { position, facing } = this.gameState.enterScene('ShopInteriorScene', SHOP_SPAWN);
         this.facing = facing;
 
-        // Chi giu va cham voi vat can lon
-        this.blockers = [
-            // Hai tu nguyen lieu
-            {
-                left: 270,
-                right: 540,
-                top: 150,
-                bottom: 412
-            },
-            {
-                left: 885,
-                right: 1165,
-                top: 150,
-                bottom: 412
-            },
-
-            // Vac thuoc
-            {
-                left: 585,
-                right: 860,
-                top: 275,
-                bottom: 420
-            },
-
-            // Quay le tan cong
-            {
-                left: 42,
-                right: 190,
-                top: 635,
-                bottom: 810
-            },
-            {
-                left: 170,
-                right: 320,
-                top: 700,
-                bottom: 832
-            },
-            {
-                left: 310,
-                right: 430,
-                top: 595,
-                bottom: 780
-            },
-
-            // Ban so che
-            {
-                left: 990,
-                right: 1342,
-                top: 490,
-                bottom: 605
-            },
-
-            // Ruong va gio nguyen lieu
-            {
-                left: 1180,
-                right: 1360,
-                top: 710,
-                bottom: 808
-            },
-            {
-                left: 1080,
-                right: 1360,
-                top: 820,
-                bottom: 895
-            }
-        ];
-
-        // Cac tram lam viec
-        this.stations = [
-            {
-                id: 'brewing',
-                name: 'Vạc nấu thuốc',
-                x: 725,
-                y: 505,
-                radius: 115
-            },
-            {
-                id: 'preparation',
-                name: 'Bàn sơ chế',
-                x: 1120,
-                y: 665,
-                radius: 125
-            },
-            {
-                id: 'storage',
-                name: 'Rương nguyên liệu',
-                x: 1045,
-                y: 827,
-                radius: 135
-            },
-            {
-                id: 'reception',
-                name: 'Quầy lễ tân',
-                x: 505,
-                y: 690,
-                radius: 135
-            }
-        ];
+        this.collision = createCollision(shopGeometry);
 
         // Animation phu thuy
         for (const dir of [
@@ -206,14 +101,24 @@ export default class ShopInteriorScene extends Phaser.Scene {
             this.facing,
             0
         )
-            .setOrigin(0.5, 1)
+            .setOrigin(0.5, WITCH_FOOT_ORIGIN)
             .setScale(WITCH_SCALE)
             .setDepth(10);
 
-        camera.setBounds(0, 0, ROOM_W, ROOM_H);
-        camera.startFollow(this.witch, true, CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_LERP, 0, CAMERA_LOOK_UP);
-        this.uiCamera = this.cameras.add();
-        this.uiCamera.ignore([room, this.witch]);
+        this.camera = createExplorationCamera(this, this.witch, {
+            bounds: { width: ROOM_W, height: ROOM_H },
+            targetView: { width: 1320, height: 800 },
+            deadzone: { x: 0.18, y: 0.14 },
+            offsetY: 64
+        });
+        this.camera.ui.ignore([room, this.witch]);
+        const addUI = obj => {
+            obj.setScrollFactor(0).setDepth(100);
+            this.camera.world.ignore(obj);
+            return obj;
+        };
+        this.controls = createExplorationControls(this, addUI, () => this.interact(),
+            { touchOnly: true, fullscreenY: 64 });
 
         // Giao dien
         const uiStyle = {
@@ -248,162 +153,41 @@ export default class ShopInteriorScene extends Phaser.Scene {
                 useHandCursor: true
             });
 
-        camera.ignore([this.hint, this.exitButton]);
+        addUI(this.hint);
+        addUI(this.exitButton);
 
         this.exitButton.on('pointerdown', () => {
             this.leaveShop();
         });
 
-        // Hien thi vung va cham va vung tuong tac
-        if (DEBUG_COLLISION) {
-            const dbg = this.add.graphics()
-                .setDepth(50);
-            this.uiCamera.ignore(dbg);
-
-            // Mau do: khu vuc bi chan
-            dbg.lineStyle(
-                3,
-                0xff5555,
-                0.85
-            );
-
-            for (const b of this.blockers) {
-                dbg.strokeRect(
-                    b.left,
-                    b.top,
-                    b.right - b.left,
-                    b.bottom - b.top
-                );
-            }
-
-            // Mau xanh: vung kich hoat tram
-            dbg.lineStyle(
-                2,
-                0x55ffbb,
-                0.7
-            );
-
-            for (const p of this.stations) {
-                dbg.strokeCircle(
-                    p.x,
-                    p.y,
-                    p.radius
-                );
-            }
-        }
-
+        this.debug = createExplorationDebug(this, this.camera.ui, shopGeometry);
         const view = this.#workstationView;
         this.#workstationView = undefined;
         if (returningFromWorkstation && view &&
             view.playerX === position.x && view.playerY === position.y && view.facing === facing) {
-            camera.centerOn(view.centerX, view.centerY);
+            this.camera.world.centerOn(view.centerX, view.centerY);
         }
-        this.resizeScene(this.scale.gameSize);
-
-        this.scale.on(
-            'resize',
-            this.resizeScene,
-            this
-        );
-
-        this.events.once(
-            Phaser.Scenes.Events.SHUTDOWN,
-            () => {
-                this.scale.off(
-                    'resize',
-                    this.resizeScene,
-                    this
-                );
-            }
-        );
+        this.camera.start((width, height) => {
+            this.hint.setPosition(HUD_MARGIN, HUD_MARGIN);
+            this.exitButton.setPosition(width - HUD_MARGIN, HUD_MARGIN);
+            this.controls.resize(width, height);
+            this.debug.resize(height);
+        });
     }
 
-    // Dieu chinh camera
-    resizeScene({ width, height }) {
-        if (width <= 0 || height <= 0) return;
-
-        const camera = this.cameras.main;
-        const { x, y } = camera.midPoint;
-        camera.setSize(width, height);
-        // Keep the visible world smaller than the room on both axes.
-        camera.setZoom(Math.max(width / MAX_VIEW_W, height / MAX_VIEW_H));
-        camera.setDeadzone(camera.displayWidth * 0.18, camera.displayHeight * 0.14);
-        camera.centerOn(x, y);
-
-        this.uiCamera.setSize(width, height);
-        this.hint.setPosition(HUD_MARGIN, HUD_MARGIN);
-        this.exitButton.setPosition(width - HUD_MARGIN, HUD_MARGIN);
-    }
-
-    // Kiem tra va cham theo ban chan
-    canWalk(x, y) {
-        const radiusX = 10;
-        const radiusY = 7;
-
-        const inRoom =
-            x >= 92 &&
-            x <= 1355 &&
-            y >= 405 &&
-            y <= 976;
-
-        const onDoorway =
-            x >= 628 &&
-            x <= 820 &&
-            y >= 905 &&
-            y <= 1030;
-
-        if (!inRoom && !onDoorway) {
-            return false;
-        }
-
-        return !this.blockers.some(b =>
-            x + radiusX > b.left &&
-            x - radiusX < b.right &&
-            y + radiusY > b.top &&
-            y - radiusY < b.bottom
-        );
-    }
-
-    // Tim tram lam viec gan phu thuy
-    nearestInteraction() {
-        const x = this.witch.x;
-        const y = this.witch.y;
-
-        // Uu tien cua ra ngoai
-        if (
-            Phaser.Math.Distance.Between(
-                x,
-                y,
-                DOOR.x,
-                DOOR.y
-            ) < 85
-        ) {
-            return {
-                id: 'exit',
-                name: 'Ra ngoài'
-            };
-        }
-
-        // Tim tram co the tuong tac
-        return this.stations.find(p =>
-            Phaser.Math.Distance.Between(
-                x,
-                y,
-                p.x,
-                p.y
-            ) <= p.radius
-        ) || null;
+    interactionAtFoot() {
+        return findInteraction(this.witch, shopGeometry.zones, this.collision.canStand);
     }
 
     // Xu ly tuong tac chung
     interact() {
-        const point = this.nearestInteraction();
+        const zone = this.interactionAtFoot();
+        if (!zone) return false;
+        this.controls.reset();
 
-        if (!point) return;
-
-        if (point.id === 'exit') {
+        if (zone.id === 'exit') {
             this.leaveShop();
-            return;
+            return true;
         }
 
         const { x, y } = this.cameras.main.midPoint;
@@ -416,8 +200,9 @@ export default class ShopInteriorScene extends Phaser.Scene {
         };
         this.scene.start(
             'WorkstationScene',
-            { station: point.id }
+            { station: zone.id }
         );
+        return true;
     }
 
     // Ra khoi Tiem thuoc
@@ -425,98 +210,25 @@ export default class ShopInteriorScene extends Phaser.Scene {
         this.scene.start('WorldMapScene');
     }
 
-    // Cap nhat di chuyen
     update(_time, delta) {
-        const point = this.nearestInteraction();
+        const zone = this.interactionAtFoot();
+        this.hint.setText(zone ? 'E: ' + zone.name : 'WASD: di chuyển');
+        this.debug.update(this.witch);
+        if (Phaser.Input.Keyboard.JustDown(this.keys.E) && this.interact()) return;
 
-        this.hint.setText(
-            point
-                ? `E: ${point.name}`
-                : 'WASD: di chuyển'
-        );
-
-        // Nhan E de mo tram
-        if (
-            Phaser.Input.Keyboard.JustDown(
-                this.keys.E
-            )
-        ) {
-            this.interact();
-            return;
+        const vector = movementVector(this.keys, this.controls.vector);
+        if (vector) {
+            const distance = this.speed * Math.min(delta, 60) / 1000;
+            const next = this.collision.move(this.witch, vector.x * distance, vector.y * distance);
+            if (this.witch.x !== next.x || this.witch.y !== next.y) {
+                this.witch.setPosition(next.x, next.y);
+                this.facing = facingFor(vector);
+                this.witch.anims.play('walk_' + this.facing, true);
+                this.gameState.updatePlayerPose('ShopInteriorScene', this.witch, this.facing);
+                return;
+            }
         }
-
-        let dx =
-            Number(this.keys.D.isDown) -
-            Number(this.keys.A.isDown);
-
-        let dy =
-            Number(this.keys.S.isDown) -
-            Number(this.keys.W.isDown);
-
-        const length = Math.hypot(dx, dy);
-
-        if (length <= 0) {
-            this.witch.anims.stop();
-            this.witch.setTexture(
-                this.facing,
-                0
-            );
-            return;
-        }
-
-        dx /= length;
-        dy /= length;
-
-        const step =
-            this.speed *
-            Math.min(delta, 60) /
-            1000;
-
-        const oldX = this.witch.x;
-        const oldY = this.witch.y;
-
-        // Truot doc vat can theo tung truc
-        if (
-            this.canWalk(
-                oldX + dx * step,
-                oldY
-            )
-        ) {
-            this.witch.x += dx * step;
-        }
-
-        if (
-            this.canWalk(
-                this.witch.x,
-                oldY + dy * step
-            )
-        ) {
-            this.witch.y += dy * step;
-        }
-
-        // Xu ly animation
-        if (
-            this.witch.x !== oldX ||
-            this.witch.y !== oldY
-        ) {
-            this.facing =
-                Math.abs(dx) > Math.abs(dy)
-                    ? (dx > 0 ? 'right' : 'left')
-                    : (dy > 0 ? 'down' : 'up');
-
-            this.witch.anims.play(
-                `walk_${this.facing}`,
-                true
-            );
-            this.gameState.updatePlayerPose('ShopInteriorScene', this.witch, this.facing);
-
-        } else {
-            this.witch.anims.stop();
-            this.witch.setTexture(
-                this.facing,
-                0
-            );
-        }
+        this.witch.anims.stop();
+        this.witch.setTexture(this.facing, 0);
     }
 }
-

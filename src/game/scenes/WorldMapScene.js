@@ -1,96 +1,15 @@
 import Phaser from 'phaser';
 
-// Little Alchemist: World Map prototype
-// 80 x 60 tiles at 32px each: more real terrain, not an enlarged background image.
-const TILE = 32;
-const MAP_COLS = 80;
-const MAP_ROWS = 60;
-const MAP_WIDTH = MAP_COLS * TILE;
-const MAP_HEIGHT = MAP_ROWS * TILE;
-
-// Central landmarks (world coordinates, not screen coordinates).
-const SHOP = { x: 430, y: 1390 };
-const MUSHROOM = { x: 700, y: 465 };
-const FLOWER = { x: 1930, y: 425 };
-const ROCK = { x: 1700, y: 1000 };
-const LAKE = { x: 2000, y: 1540 };
-const MAILBOX = { x: SHOP.x + 105, y: SHOP.y + 105 };
-
-// All routes leave the front courtyard, then turn around the cottage.
-// The house occupies approximately x=350..510 and y=1245..1410.
-const SHOP_PATH_START = { x: SHOP.x, y: SHOP.y + 90 };
-const LEFT_SIDE = [
-    SHOP_PATH_START,
-    { x: 330, y: 1510 },
-    { x: 290, y: 1410 },
-    { x: 285, y: 1250 },
-    { x: 340, y: 1150 }
-];
-const RIGHT_SIDE = [
-    SHOP_PATH_START,
-    { x: 595, y: 1520 },
-    { x: 635, y: 1420 },
-    { x: 650, y: 1260 },
-    { x: 720, y: 1150 }
-];
-
-const PATHS = {
-    mushroom: [
-        ...LEFT_SIDE,
-        { x: 440, y: 1060 },
-        { x: 570, y: 1000 },
-        { x: 530, y: 770 },
-        { x: 710, y: 625 },
-        MUSHROOM
-    ],
-    flower: [
-        ...RIGHT_SIDE,
-        { x: 970, y: 980 },
-        { x: 1230, y: 770 },
-        { x: 1630, y: 600 },
-        FLOWER
-    ],
-    rock: [
-        ...RIGHT_SIDE,
-        { x: 900, y: 1220 },
-        { x: 1120, y: 1170 },
-        ROCK
-    ],
-    lake: [
-        ...RIGHT_SIDE,
-        { x: 840, y: 1510 },
-        { x: 1270, y: 1700 },
-        { x: 1660, y: 1660 },
-        LAKE
-    ]
-};
-
-function noise(x, y) {
-    let n = (x * 374761393 + y * 668265263) | 0;
-    n = Math.imul(n ^ (n >>> 13), 1274126177);
-    return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
-}
-
-function distanceToSegment(px, py, ax, ay, bx, by) {
-    const vx = bx - ax;
-    const vy = by - ay;
-    const t = Phaser.Math.Clamp(
-        ((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy || 1),
-        0, 1
-    );
-    return Phaser.Math.Distance.Between(px, py, ax + t * vx, ay + t * vy);
-}
-
-function distanceToPath(x, y, points) {
-    let best = Infinity;
-    for (let i = 1; i < points.length; i++) {
-        best = Math.min(best, distanceToSegment(
-            x, y, points[i - 1].x, points[i - 1].y,
-            points[i].x, points[i].y
-        ));
-    }
-    return best;
-}
+import { createExplorationCamera } from '../exploration/ExplorationCamera.js';
+import { createExplorationControls, facingFor, movementVector } from '../exploration/ExplorationControls.js';
+import { createExplorationDebug } from '../exploration/ExplorationDebug.js';
+import { createCollision, findInteraction } from '../exploration/ExplorationGeometry.js';
+import { groundPosition, sortByGround } from '../exploration/GroundDepth.js';
+import {
+    FLOWER, HOUSE, LAKE, LANDMARK_ROCKS, MAILBOX, MAILBOX_GROUND_OFFSET,
+    MAP_COLS, MAP_HEIGHT, MAP_ROWS, MAP_WIDTH, MUSHROOM, PATHS, SHOP, SHOP_PATH_START, TILE,
+    WORLD_FOREST_PROPS, WORLD_WITCH_GROUND_OFFSET, WORLD_WITCH_SCALE, noise, worldGeometry
+} from '../maps/worldMapData.js';
 
 export default class WorldMapScene extends Phaser.Scene {
     constructor() {
@@ -138,18 +57,12 @@ export default class WorldMapScene extends Phaser.Scene {
         this.cameras.main.setBackgroundColor('#241B32');
         this.modalOpen = false;
         this.speed = 160;
-        this.colliders = [];
+        this.collision = createCollision(worldGeometry);
         this.lastFogX = null;
         this.lastFogY = null;
         this.gameState = this.registry.get('gameState');
         const { position, facing } = this.gameState.enterScene('WorldMapScene');
         this.facing = facing;
-        this.joyX = 85;
-        this.joyY = 300;
-        this.joyRadius = 42;
-        this.joyDX = 0;
-        this.joyDY = 0;
-        this.joyPointer = null;
 
         // Everything on the world uses world coordinates.
         this.land = this.add.graphics().setDepth(-10);
@@ -160,12 +73,12 @@ export default class WorldMapScene extends Phaser.Scene {
 
         // Tiệm thuốc pixel art
         this.shopSprite = this.add.image(
-            SHOP.x,
-            SHOP.y + 65,
+            HOUSE.x,
+            HOUSE.y,
             'potionShop'
         );
 
-        this.shopSprite.setOrigin(0.5, 1);
+        this.shopSprite.setOrigin(0.5, 1).setScale(HOUSE.scale);
         this.shopSprite.setDepth(2);
         // Hòm thư pixel art
         this.mailboxSprite = this.add.image(
@@ -175,12 +88,12 @@ export default class WorldMapScene extends Phaser.Scene {
         );
 
         this.mailboxSprite.setOrigin(0.5, 1);
-        this.mailboxSprite.setScale(1.5);
-        this.mailboxSprite.setDepth(this.mailboxSprite.y);
-
+        this.mailboxSprite.setScale(MAILBOX.scale);
+        sortByGround(this.mailboxSprite, MAILBOX_GROUND_OFFSET);
 
         this.witch = this.add.sprite(position.x, position.y, facing, 0)
-            .setScale(1.5).setDepth(position.y);
+            .setScale(WORLD_WITCH_SCALE);
+        sortByGround(this.witch, WORLD_WITCH_GROUND_OFFSET);
         for (const dir of ['down', 'up', 'left', 'right']) {
             const name = 'walk_' + dir;
             if (!this.anims.exists(name)) {
@@ -196,29 +109,22 @@ export default class WorldMapScene extends Phaser.Scene {
         // Lớp sương mù riêng, mềm và được xóa theo bước chân.
         this.createFog();
 
-        this.worldCamera = this.cameras.main;
-        this.worldCamera.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT);
-        this.worldCamera.startFollow(this.witch, true, 0.18, 0.18);
-        this.worldCamera.setZoom(1);
-
-        // Second camera for fixed-size UI even while the world camera zooms.
-        this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
-        
-        this.uiCamera.ignore([this.land,this.routes,this.decor,this.witch,this.fog,this.shopSprite,this.mailboxSprite]);
-
-
+        this.camera = createExplorationCamera(this, this.witch, {
+            bounds: { width: MAP_WIDTH, height: MAP_HEIGHT },
+            zoom: 1,
+            zoomLimits: { min: 0.75, max: 1.7 },
+            deadzone: { x: 0.43, y: 0.38 }
+        });
+        this.camera.ui.ignore([this.land, this.routes, this.decor, this.witch, this.fog,
+            this.shopSprite, this.mailboxSprite]);
         this.keys = this.input.keyboard.addKeys('W,A,S,D,E');
         this.createUI();
-        this.resizeWorld(this.scale.gameSize);
-        this.scale.on('resize', this.resizeWorld, this);
+        this.debug = createExplorationDebug(this, this.camera.ui, worldGeometry);
+        this.camera.start((width, height) => this.layoutUI(width, height));
 
-        this.input.on('wheel', (pointer, objects, dx, dy) => {
-            this.adjustZoom(dy > 0 ? -0.1 : 0.1);
-        });
-
-        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-            this.scale.off('resize', this.resizeWorld, this);
-        });
+        const onWheel = (_pointer, _objects, _dx, dy) => this.adjustZoom(dy > 0 ? -0.1 : 0.1);
+        this.input.on('wheel', onWheel);
+        this.events.once('shutdown', () => this.input.off('wheel', onWheel));
     }
 
     buildTerrain() {
@@ -239,8 +145,7 @@ export default class WorldMapScene extends Phaser.Scene {
         }
 
         // Routes are added as new terrain, NOT the old background enlarged.
-        for (const [name, points] of Object.entries(PATHS)) {
-            const visible = name === 'mushroom' ? 0x92715F : 0x92715F;
+        for (const points of Object.values(PATHS)) {
             for (let i = 1; i < points.length; i++) {
                 const a = points[i - 1];
                 const b = points[i];
@@ -260,22 +165,9 @@ export default class WorldMapScene extends Phaser.Scene {
         this.routes.fillStyle(0xAD8D6E);
         this.routes.fillCircle(SHOP_PATH_START.x, SHOP_PATH_START.y + 35, 175);
 
-        // Forest details spread across map: keep paths readable.
-        for (let y = 55; y < MAP_HEIGHT - 40; y += 55) {
-            for (let x = 45; x < MAP_WIDTH - 40; x += 55) {
-                const nx = x + (noise(x, y) - 0.5) * 22;
-                const ny = y + (noise(x + 9, y + 6) - 0.5) * 22;
-                const nearPath = Object.values(PATHS).some(path =>
-                    distanceToPath(nx, ny, path) < 90
-                );
-                const nearPlace = [SHOP_PATH_START, MUSHROOM, FLOWER, ROCK, LAKE].some(p =>
-                    Phaser.Math.Distance.Between(nx, ny, p.x, p.y) < 185
-                );
-                if (nearPath || nearPlace) continue;
-                const r = noise(x + 13, y + 21);
-                if (r > 0.29) this.drawTree(nx, ny, 0.8 + noise(x + 11, y) * 0.5);
-                else if (r > 0.18) this.drawRock(nx, ny);
-            }
+        for (const { type, x, y, size } of WORLD_FOREST_PROPS) {
+            if (type === 'tree') this.drawTree(x, y, size);
+            else this.drawRock(x, y);
         }
     }
 
@@ -294,8 +186,6 @@ export default class WorldMapScene extends Phaser.Scene {
         g.fillStyle(0x3D7863, 0.65);
         g.fillTriangle(x, y - 44 * size, x - 7 * size, y - 22 * size,
             x + 5 * size, y - 21 * size);
-        // Chỉ thân cây cản đường, không dùng toàn bộ tán cây.
-        this.colliders.push({ x, y: y + 3 * size, radius: 14 * size });
     }
 
     drawRock(x, y) {
@@ -303,7 +193,6 @@ export default class WorldMapScene extends Phaser.Scene {
         this.decor.fillRoundedRect(x - 13, y - 11, 27, 20, 4);
         this.decor.fillStyle(0x68707A);
         this.decor.fillTriangle(x - 12, y - 9, x - 1, y - 19, x + 13, y - 9);
-        this.colliders.push({ x, y: y - 4, radius: 17 });
     }
 
     drawMushroom(x, y, scale, glow = false) {
@@ -323,17 +212,6 @@ export default class WorldMapScene extends Phaser.Scene {
 
     buildPlaces() {
         const g = this.decor;
-        // Chặn toàn bộ mái và thân Tiệm thuốc
-        // Nhân vật chỉ có thể đứng trước cửa
-        this.colliders.push({
-            type: 'rect',
-            left: SHOP_PATH_START.x - 80,
-            right: SHOP_PATH_START.x + 80,
-            top: SHOP_PATH_START.y - 210,
-            bottom: SHOP_PATH_START.y - 45
-        });
-
-        this.colliders.push({ x: MAILBOX.x, y: MAILBOX.y - 14, radius: 13 });
 
         // Far-off destinations on genuinely separated coordinates.
         for (let i = 0; i < 12; i++) {
@@ -350,10 +228,7 @@ export default class WorldMapScene extends Phaser.Scene {
             g.fillStyle(0xEAD69B);
             g.fillCircle(x, y, 2);
         }
-        for (let i = 0; i < 18; i++) {
-            this.drawRock(ROCK.x + (noise(i, 99) - 0.5) * 300,
-                ROCK.y + (noise(i, 54) - 0.5) * 210);
-        }
+        for (const { x, y } of LANDMARK_ROCKS) this.drawRock(x, y);
         g.fillStyle(0x265B73);
         g.fillEllipse(LAKE.x, LAKE.y, 300, 190);
         g.fillStyle(0x5F8E9C, 0.4);
@@ -513,90 +388,21 @@ export default class WorldMapScene extends Phaser.Scene {
     }
     
 
-    // Collision: đường rừng thực sự đi được, phần rừng dày chặn bước chân.
-    // Phải có clearing cho từng địa điểm + sân nhà thuốc.
-    canWalk(x, y) {
-        const footX = x;
-        const footY = y + 23;
-        if (x < 35 || y < 45 || x > MAP_WIDTH - 35 || y > MAP_HEIGHT - 48) return false;
+    getFootPosition() {
+        return groundPosition(this.witch, WORLD_WITCH_GROUND_OFFSET);
+    }
 
-        const onTrail = Object.values(PATHS).some(path =>
-            distanceToPath(footX, footY, path) <= 52
-        );
-        
-        const onClearing = [
-            { p: SHOP, radius: 177 },
-            { p: MUSHROOM, radius: 145 },
-            { p: FLOWER, radius: 145 },
-            { p: ROCK, radius: 145 },
-            { p: LAKE, radius: 148 }
-        ].some(({ p, radius }) => Phaser.Math.Distance.Between(
-            footX, footY, p.x, p.y
-        ) <= radius);
-
-// Cho phép đi trong sân tròn trước Tiệm thuốc
-        const onCourtyard = Phaser.Math.Distance.Between(
-            footX,
-            footY,
-            SHOP_PATH_START.x,
-            SHOP_PATH_START.y + 35
-        ) <= 175;
-
-        if (!onTrail && !onClearing && !onCourtyard) return false;
-
-        for (const c of this.colliders) {
-            if (c.type === 'rect') {
-                const margin = 8;
-                if (footX >= c.left - margin && footX <= c.right + margin &&
-                    footY >= c.top - margin && footY <= c.bottom + margin) return false;
-            } else {
-                const dx = footX - c.x;
-                const dy = footY - c.y;
-                const radius = c.radius + 10;
-                if (dx * dx + dy * dy < radius * radius) return false;
-            }
-        }
-        const ex = (footX - LAKE.x) / 148;
-        const ey = (footY - LAKE.y) / 93;
-        if (ex * ex + ey * ey < 1) return false;
-        return true;
+    interactionAtFoot() {
+        return findInteraction(this.getFootPosition(), worldGeometry.zones, this.collision.canStand);
     }
 
     createUI() {
-        this.uiObjects = [];
-        const addUI = (obj) => {
+        const addUI = obj => {
             obj.setScrollFactor(0).setDepth(100);
-            this.worldCamera.ignore(obj);
-            this.uiObjects.push(obj);
+            this.camera.world.ignore(obj);
             return obj;
         };
-
-        this.joyBase = addUI(this.add.circle(0, 0, 54, 0x563A6E, 0.6)
-            .setStrokeStyle(3, 0xE7CFAE));
-        this.joyThumb = addUI(this.add.circle(0, 0, 22, 0x926EAA)
-            .setStrokeStyle(2, 0xE7CFAE));
-        this.joyZone = addUI(this.add.zone(0, 0, 145, 145).setInteractive());
-        if (this.input.manager.pointers.length < 3) this.input.addPointer(2);
-        this.joyZone.on('pointerdown', pointer => {
-            if (this.joyPointer !== null) return;
-            this.joyPointer = pointer.id;
-            this.updateJoystick(pointer);
-        });
-        this.input.on('pointermove', pointer => {
-            if (pointer.id === this.joyPointer) this.updateJoystick(pointer);
-        });
-        this.input.on('pointerup', pointer => {
-            if (pointer.id === this.joyPointer) this.resetJoystick();
-        });
-        this.input.on('pointerupoutside', pointer => {
-            if (pointer.id === this.joyPointer) this.resetJoystick();
-        });
-
-        this.interactButton = addUI(this.add.circle(0, 0, 38, 0x74518B)
-            .setStrokeStyle(3, 0xE8CDA8).setInteractive({ useHandCursor: true }));
-        this.interactIcon = addUI(this.add.text(0, 0, '✋', { fontSize: '30px' })
-            .setOrigin(0.5));
-        this.interactButton.on('pointerdown', () => this.interact());
+        this.controls = createExplorationControls(this, addUI, () => this.interact());
 
         this.zoomIn = addUI(this.add.text(0, 0, '+', {
             fontFamily: 'Arial', fontSize: '29px', fontStyle: 'bold', color: '#FFF0DC',
@@ -613,7 +419,7 @@ export default class WorldMapScene extends Phaser.Scene {
         this.zoomOut.on('pointerdown', () => this.adjustZoom(-0.15));
 
         this.infoText = addUI(this.add.text(0, 0,
-            'Tiệm thuốc  •  E: Hòm thư', {
+            'Tiệm thuốc', {
                 fontFamily: 'Arial', fontSize: '15px', color: '#F5E6D1',
                 backgroundColor: '#392747', padding: { x: 10, y: 7 }
             }).setOrigin(0.5, 0));
@@ -631,39 +437,10 @@ export default class WorldMapScene extends Phaser.Scene {
         this.modalClose.on('pointerdown', () => this.closeModal());
     }
 
-    updateJoystick(pointer) {
-        let dx = pointer.x - this.joyX;
-        let dy = pointer.y - this.joyY;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        if (length > this.joyRadius) {
-            dx *= this.joyRadius / length;
-            dy *= this.joyRadius / length;
-        }
-        this.joyDX = dx / this.joyRadius;
-        this.joyDY = dy / this.joyRadius;
-        this.joyThumb.setPosition(this.joyX + dx, this.joyY + dy);
-    }
-
-    resetJoystick() {
-        this.joyPointer = null;
-        this.joyDX = 0;
-        this.joyDY = 0;
-        if (this.joyThumb) this.joyThumb.setPosition(this.joyX, this.joyY);
-    }
-
-    resizeWorld(size) {
-        const w = size.width;
-        const h = size.height;
-        this.uiCamera.setSize(w, h);
-        this.worldCamera.setSize(w, h);
-        this.worldCamera.setDeadzone(w * 0.43, h * 0.38);
-        this.joyX = 86;
-        this.joyY = h - 86;
-        this.joyBase.setPosition(this.joyX, this.joyY);
-        this.joyZone.setPosition(this.joyX, this.joyY);
-        this.resetJoystick();
-        this.interactButton.setPosition(w - 79, h - 84);
-        this.interactIcon.setPosition(w - 79, h - 84);
+    layoutUI(w, h) {
+        this.controls.resize(w, h);
+        this.debug.resize(h);
+        this.zoomValue.setText(this.camera.world.zoom.toFixed(2) + '×');
         this.zoomIn.setPosition(w - 42, 45);
         this.zoomOut.setPosition(w - 42, 100);
         this.zoomValue.setPosition(w - 42, 143);
@@ -674,54 +451,29 @@ export default class WorldMapScene extends Phaser.Scene {
     }
 
     adjustZoom(amount) {
-        const old = this.worldCamera.zoom;
-        const next = Phaser.Math.Clamp(Math.round((old + amount) * 100) / 100, 0.75, 1.7);
-        this.worldCamera.setZoom(next);
-        this.zoomValue.setText(next.toFixed(2) + '×');
+        const zoom = this.camera.adjustZoom(amount);
+        this.zoomValue.setText(zoom.toFixed(2) + '×');
     }
 
-    
     interact() {
-      // Đóng bảng đơn hàng nếu đang mở
         if (this.modalOpen) {
             this.closeModal();
-            return;
+            return true;
         }
 
-        // Tương tác với hòm thư
-        const distanceMailbox = Phaser.Math.Distance.Between(
-            this.witch.x,
-            this.witch.y,
-            MAILBOX.x,
-            MAILBOX.y
-        );
-
-        if (distanceMailbox <= 95) {
+        const zone = this.interactionAtFoot();
+        if (!zone) return false;
+        this.controls.reset();
+        if (zone.id === 'mailbox') {
             this.modalOpen = true;
-            this.resetJoystick();
-
             this.modalBg.setVisible(true);
             this.modalText.setVisible(true);
             this.modalClose.setVisible(true);
-            return;
+        } else {
+            this.scene.start('ShopInteriorScene');
         }
-
-    // Tương tác với cửa Tiệm thuốc
-    const doorX = SHOP.x;
-    const doorY = SHOP.y + 65;
-
-    const distanceDoor = Phaser.Math.Distance.Between(
-        this.witch.x,
-        this.witch.y,
-        doorX,
-        doorY
-    );
-
-    if (distanceDoor <= 55) {
-        this.scene.start('ShopInteriorScene');
+        return true;
     }
-}
-
 
     closeModal() {
         this.modalOpen = false;
@@ -730,51 +482,29 @@ export default class WorldMapScene extends Phaser.Scene {
         this.modalClose.setVisible(false);
     }
 
-    update(time, delta) {
-        if (Phaser.Input.Keyboard.JustDown(this.keys.E)) this.interact();
-
+    update(_time, delta) {
+        const zone = this.interactionAtFoot();
+        this.infoText.setText(zone ? 'E: ' + zone.name : 'Tiệm thuốc');
+        this.debug.update(this.getFootPosition());
+        if (Phaser.Input.Keyboard.JustDown(this.keys.E) && this.interact()) return;
         if (this.modalOpen) return;
-        let dx = 0;
-        let dy = 0;
-        if (this.keys.A.isDown) dx--;
-        if (this.keys.D.isDown) dx++;
-        if (this.keys.W.isDown) dy--;
-        if (this.keys.S.isDown) dy++;
-        if (dx === 0 && dy === 0) {
-            dx = this.joyDX;
-            dy = this.joyDY;
-        }
-        const length = Math.sqrt(dx * dx + dy * dy);
-        if (length > 0.15) {
-            dx /= length;
-            dy /= length;
-            const seconds = Math.min(delta, 60) / 1000;
-            const nx = this.witch.x + dx * this.speed * seconds;
-            const ny = this.witch.y + dy * this.speed * seconds;
-            // Trượt dọc cạnh vật cản; không phát animation đi khi hoàn toàn bị chặn.
-            const oldX = this.witch.x;
-            const oldY = this.witch.y;
-            if (this.canWalk(nx, this.witch.y)) this.witch.x = nx;
-            if (this.canWalk(this.witch.x, ny)) this.witch.y = ny;
-            const didMove = Phaser.Math.Distance.Between(
-                oldX, oldY, this.witch.x, this.witch.y) > 0.01;
-            if (didMove) {
-                this.revealAlongMovement(this.witch.x, this.witch.y);
-                this.facing = Math.abs(dx) > Math.abs(dy)
-                    ? (dx > 0 ? 'right' : 'left')
-                    : (dy > 0 ? 'down' : 'up');
+
+        const vector = movementVector(this.keys, this.controls.vector);
+        if (vector) {
+            const previous = this.getFootPosition();
+            const distance = this.speed * Math.min(delta, 60) / 1000;
+            const next = this.collision.move(previous, vector.x * distance, vector.y * distance);
+            if (next.x !== previous.x || next.y !== previous.y) {
+                this.witch.setPosition(next.x, next.y - WORLD_WITCH_GROUND_OFFSET.y);
+                sortByGround(this.witch, WORLD_WITCH_GROUND_OFFSET);
+                this.facing = facingFor(vector);
                 this.witch.anims.play('walk_' + this.facing, true);
-            } else {
-                this.witch.anims.stop();
-                this.witch.setTexture(this.facing, 0);
-            }
-            if (this.witch.x !== oldX || this.witch.y !== oldY) {
+                this.revealAlongMovement(this.witch.x, this.witch.y);
                 this.gameState.updatePlayerPose('WorldMapScene', this.witch, this.facing);
+                return;
             }
-        } else {
-            this.witch.anims.stop();
-            this.witch.setTexture(this.facing, 0);
         }
-        this.witch.setDepth(this.witch.y);
+        this.witch.anims.stop();
+        this.witch.setTexture(this.facing, 0);
     }
 }

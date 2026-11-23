@@ -4,6 +4,7 @@ import WorldMapScene from './scenes/WorldMapScene';
 import GameScene from './scenes/GameScene';
 import ShopInteriorScene from './scenes/ShopInteriorScene';
 import WorkstationScene from './scenes/WorkstationScene';
+import { observeGameContainer } from './exploration/ExplorationCamera.js';
 import { GameState } from './state/GameState.js';
 import { SaveSystem } from './state/SaveSystem.js';
 
@@ -31,16 +32,21 @@ export function createGame(parent) {
         backgroundColor: '#A8C99B',
         pixelArt: true,
         roundPixels: true,
+        input: { touch: true, activePointers: 2 },
 
         scale: {
             mode: Phaser.Scale.RESIZE,
             autoCenter: Phaser.Scale.CENTER_BOTH,
+            fullscreenTarget: parent,
             width: 800,
             height: 450,
         },
 
         scene: [scenes[initialScene], ...Object.values(scenes).filter(scene => scene !== scenes[initialScene])],
         callbacks: {
+            postBoot(game) {
+                observeGameContainer(game, parent);
+            },
             preBoot(game) {
                 game.registry.set('gameState', gameState);
                 game.registry.set('saveSystem', saveSystem);
