@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import WorldMapScene from './scenes/WorldMapScene';
 import GameScene from './scenes/GameScene';
 import ShopInteriorScene from './scenes/ShopInteriorScene';
+import WorkstationScene from './scenes/WorkstationScene';
 
 export function createGame(parent) {
     return new Phaser.Game({
@@ -23,6 +24,6 @@ export function createGame(parent) {
             height: 450,
         },
 
-        scene: [WorldMapScene, GameScene, ShopInteriorScene],
+        scene: [WorldMapScene,GameScene,ShopInteriorScene,WorkstationScene],
     });
 }
