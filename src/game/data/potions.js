@@ -4,7 +4,7 @@ export const potions = Object.freeze([
         name: 'Thuốc Hồi Phục',
         category: 'potion',
         description: 'Chế phẩm theo chủ đề hồi phục sau khi gắng sức.',
-        assetPath: null,
+        assetPath: '/assets/sprites/potion_01.png',
         designStatus: 'provisional'
     }),
     Object.freeze({
@@ -12,7 +12,7 @@ export const potions = Object.freeze([
         name: 'Thuốc Tập Trung',
         category: 'potion',
         description: 'Chế phẩm theo chủ đề giữ sự tập trung khi làm việc.',
-        assetPath: null,
+        assetPath: '/assets/sprites/potion_02.png',
         designStatus: 'provisional'
     }),
     Object.freeze({
@@ -20,7 +20,7 @@ export const potions = Object.freeze([
         name: 'Thuốc Sinh Lực',
         category: 'potion',
         description: 'Chế phẩm theo chủ đề sinh lực và sức bền.',
-        assetPath: null,
+        assetPath: '/assets/sprites/potion_03.png',
         designStatus: 'provisional'
     })
 ]);

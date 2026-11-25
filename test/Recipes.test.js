@@ -7,11 +7,10 @@ import { GameState } from '../src/game/state/GameState.js';
 
 const isPositiveSafeInteger = value => Number.isSafeInteger(value) && value > 0;
 
-test('TC-05: recipes refer only to registered processed ingredient IDs', () => {
+test('TC-05: recipes refer only to registered refined ingredient IDs', () => {
     for (const recipe of recipes) {
         for (const input of recipe.ingredients) {
-            assert.match(input.itemId, /_processed$/);
-            assert.equal(getItem(input.itemId)?.category, 'processed_ingredient', recipe.id);
+            assert.equal(getItem(input.itemId)?.category, 'refined_ingredient', recipe.id);
         }
     }
 });
@@ -37,12 +36,12 @@ test('TC-07: the three starter recipes match the approved experimental inputs an
         recipes.map(({ id, difficulty, ingredients, result, unlockedByDefault, designStatus }) =>
             ({ id, difficulty, inputs: ingredients, result, unlockedByDefault, designStatus })),
         [
-            shape('recipe_01', 'easy', [['herb_01_processed', 2], ['herb_02_processed', 1]], 'potion_01'),
+            shape('recipe_01', 'easy', [['herb_01_dried', 2], ['herb_02_extract', 1]], 'potion_01'),
             shape('recipe_02', 'medium', [
-                ['herb_03_processed', 1], ['herb_05_processed', 1], ['herb_07_processed', 1]
+                ['herb_03_dried', 1], ['herb_05_extract', 1], ['herb_07_extract', 1]
             ], 'potion_02'),
             shape('recipe_03', 'medium', [
-                ['herb_04_processed', 1], ['herb_08_processed', 1], ['herb_11_processed', 1]
+                ['herb_04_dried', 1], ['herb_08_juice', 1], ['herb_11_juice', 1]
             ], 'potion_03')
         ]
     );
@@ -83,8 +82,8 @@ test('TC-09: recipe lookups cannot mutate nested inputs or results', () => {
 test('looking up a recipe with sufficient inputs neither consumes ingredients nor awards a potion', () => {
     const gameState = new GameState();
     const { inventory } = gameState;
-    inventory.addItem('herb_01_processed', 2);
-    inventory.addItem('herb_02_processed', 1);
+    inventory.addItem('herb_01_dried', 2);
+    inventory.addItem('herb_02_extract', 1);
     const before = gameState.getState();
 
     const recipe = getRecipe('recipe_01');

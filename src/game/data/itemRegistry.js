@@ -1,7 +1,7 @@
-import { ingredients, processedIngredients } from './ingredients.js';
+import { ingredients, processedIngredients, refinedIngredients } from './ingredients.js';
 import { potions } from './potions.js';
 
-export const items = Object.freeze([...ingredients, ...processedIngredients, ...potions]);
+export const items = Object.freeze([...ingredients, ...processedIngredients, ...refinedIngredients, ...potions]);
 
 const itemsById = new Map();
 for (const item of items) {
