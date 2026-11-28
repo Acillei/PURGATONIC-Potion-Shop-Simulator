@@ -5,24 +5,50 @@ import GameScene from './scenes/GameScene';
 import ShopInteriorScene from './scenes/ShopInteriorScene';
 import WorkstationScene from './scenes/WorkstationScene';
 import { observeGameContainer } from './exploration/ExplorationCamera.js';
-import { GameState } from './state/GameState.js';
 import { SaveSystem } from './state/SaveSystem.js';
 
 const scenes = { WorldMapScene, GameScene, ShopInteriorScene, WorkstationScene };
 
-export function createGame(parent) {
-    const gameState = new GameState();
+class Game extends Phaser.Game {
+    start() {
+        // Phaser 3's visibility handler installs global listeners without a destroy hook.
+        const visibility = new AbortController();
+        const addListener = document.addEventListener;
+        const ownAddListener = Object.getOwnPropertyDescriptor(document, 'addEventListener');
+        const previousFocus = window.onfocus;
+        const previousBlur = window.onblur;
+
+        document.addEventListener = function (type, listener, options) {
+            const isVisibilityListener = /^(webkit|moz|ms)?visibilitychange$/.test(type) && options === false;
+            return addListener.call(this, type, listener, isVisibilityListener ? { signal: visibility.signal } : options);
+        };
+
+        try {
+            super.start();
+        } finally {
+            if (ownAddListener) Object.defineProperty(document, 'addEventListener', ownAddListener);
+            else delete document.addEventListener;
+
+            const gameFocus = window.onfocus;
+            const gameBlur = window.onblur;
+            this.events.once(Phaser.Core.Events.DESTROY, () => {
+                visibility.abort();
+                if (window.onfocus === gameFocus) window.onfocus = previousFocus;
+                if (window.onblur === gameBlur) window.onblur = previousBlur;
+            });
+        }
+    }
+}
+
+export function createGame(parent, { gameState, profile }) {
     let restoredPlayer = null;
     const saveSystem = new SaveSystem(gameState, {
         onRestore: () => {
             restoredPlayer = gameState.getPlayer();
         }
     });
-    saveSystem.loadGame();
-    restoredPlayer = null;
-
     const initialScene = gameState.getPlayer().currentScene;
-    return new Phaser.Game({
+    return new Game({
         type: Phaser.AUTO,
         parent: parent,
 
@@ -50,8 +76,9 @@ export function createGame(parent) {
             preBoot(game) {
                 game.registry.set('gameState', gameState);
                 game.registry.set('saveSystem', saveSystem);
+                if (profile) game.registry.set('playerProfile', profile);
 
-                game.events.on(Phaser.Core.Events.PRE_STEP, () => {
+                const restoreScene = () => {
                     if (!restoredPlayer) return;
 
                     const player = restoredPlayer;
@@ -66,6 +93,10 @@ export function createGame(parent) {
                     }
                     gameState.setPlayer(player);
                     game.scene.start(player.currentScene, {});
+                };
+                game.events.on(Phaser.Core.Events.PRE_STEP, restoreScene);
+                game.events.once(Phaser.Core.Events.DESTROY, () => {
+                    game.events.off(Phaser.Core.Events.PRE_STEP, restoreScene);
                 });
             }
         }

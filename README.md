@@ -15,7 +15,18 @@ trả về số lượng 0. `getAllItems()` trả về bản sao.
 
 ## Lưu và tải
 
-Game tự thử tải bản lưu khi khởi động. Để gọi API từ code game, lấy
+Website mở Main Menu trước. Nút **Chơi game** đọc bản lưu và dữ liệu onboarding.
+Người chơi mới vào màn chuyển tiếp tạo nhân vật. Nếu có checkpoint, menu mở
+màn chuyển tiếp tương ứng. Bản lưu cũ còn dùng được qua **Tiếp tục bản lưu**
+và mở lại đúng scene đã lưu. Với hồ sơ đã hoàn tất, phiên chơi bắt đầu tại sân
+trước tiệm và giữ dữ liệu tiến trình trong bản lưu.
+
+TASK-002C chỉ đọc metadata từ khóa riêng `purgatonic:onboarding`. Bản ghi có
+`version: 1` và `step` bằng `character_creator`, `intro_story`, `shop_name` hoặc
+`complete`. Bước `complete` cần cả hồ sơ `profile: { witchName, shopName }` hợp lệ
+và bản lưu tải thành công. Menu giữ nguyên nội dung cả hai slot.
+
+Để gọi API trong lúc chơi, lấy
 `game.registry.get('saveSystem')` hoặc `this.registry.get('saveSystem')`
 trong scene.
 
