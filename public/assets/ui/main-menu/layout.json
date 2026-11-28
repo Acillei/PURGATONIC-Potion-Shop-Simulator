@@ -1,0 +1,60 @@
+{
+  "version": "7.0",
+  "assetRoot": "public/assets/ui/main-menu/",
+  "referenceResolution": [
+    1672,
+    940
+  ],
+  "buttons": {
+    "play": {
+      "states": {
+        "normal": "button_play_normal.png",
+        "hover": "button_play_hover.png",
+        "pressed": "button_play_pressed.png"
+      },
+      "size": [
+        512,
+        128
+      ]
+    },
+    "settings": {
+      "states": {
+        "normal": "button_settings_normal.png",
+        "hover": "button_settings_hover.png",
+        "pressed": "button_settings_pressed.png"
+      },
+      "size": [
+        512,
+        128
+      ]
+    },
+    "info": {
+      "states": {
+        "normal": "button_info_normal.png",
+        "hover": "button_info_hover.png",
+        "pressed": "button_info_pressed.png"
+      },
+      "size": [
+        512,
+        128
+      ]
+    }
+  },
+  "background": "main_menu_background.png",
+  "logo": "main_menu_logo.png",
+  "placement": {
+    "logo": { "center": [535, 350], "width": 600 },
+    "buttons": {
+      "play": { "center": [1230, 416], "size": [400, 100] },
+      "settings": { "center": [1230, 530], "size": [400, 100] },
+      "info": { "center": [1230, 644], "size": [400, 100] }
+    }
+  },
+  "states": {
+    "normal": "deep purple",
+    "hover": "brighter purple",
+    "pressed": "pale gold / cream"
+  },
+  "placementNote": "Use actual accessible HTML buttons; swap image by :hover, :active, :focus-visible and keyboard handling. Use aspect-ratio:4/1; object-fit:contain.",
+  "reviewNote": "New illustrations for each state. Subtle image differences between state illustrations can remain. Treat this pack as review-required before committing."
+}

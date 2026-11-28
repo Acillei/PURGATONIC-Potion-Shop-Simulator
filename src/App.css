@@ -1,3 +1,100 @@
+.menu-v7 {
+    position: relative;
+    overflow: hidden;
+    container-type: size;
+    background: #170f22;
+}
+
+.menu-v7-stage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(
+        max(100cqw, calc(100cqh * var(--menu-v7-ratio))),
+        calc(100cqw * var(--menu-v7-safe-width)),
+        calc(100cqh * var(--menu-v7-safe-height))
+    );
+    aspect-ratio: var(--menu-v7-ratio);
+    transform: translate(-50%, -50%);
+}
+
+.menu-v7 img {
+    display: block;
+    image-rendering: pixelated;
+    pointer-events: none;
+}
+
+.menu-v7-background,
+.menu-v7-nav {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.menu-v7-background {
+    object-fit: contain;
+}
+
+.menu-v7-nav {
+    pointer-events: none;
+}
+
+.menu-v7-logo,
+.menu-v7-button {
+    position: absolute;
+    margin: 0;
+    transform: translate(-50%, -50%);
+}
+
+.menu-v7-logo img {
+    width: 100%;
+    height: auto;
+}
+
+.menu-v7-button {
+    --normal: 1;
+    --hover: 0;
+    --pressed: 0;
+    display: block;
+    aspect-ratio: 4 / 1;
+    padding: 0;
+    border: 0;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+    pointer-events: auto;
+    touch-action: manipulation;
+}
+
+.menu-v7-button:is([data-mouse-hover='true'], :focus-visible) {
+    --normal: 0;
+    --hover: 1;
+}
+
+.menu-v7-button[data-pressed='true'] {
+    --normal: 0;
+    --hover: 0;
+    --pressed: 1;
+}
+
+.menu-v7-button:focus-visible {
+    outline: 2px solid #fff0b9;
+    outline-offset: 2px;
+}
+
+.menu-v7-button img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.menu-v7-button-normal { opacity: var(--normal); }
+.menu-v7-button-hover { opacity: var(--hover); }
+.menu-v7-button-pressed { opacity: var(--pressed); }
+
 .menu {
     --menu-ink: #170f22;
     --menu-plum: #291d35;
@@ -153,18 +250,8 @@
     transition: background-color 140ms ease, color 140ms ease;
 }
 
-.menu-button[data-menu-action='play'] {
-    background: #edbb76;
-    box-shadow: inset 0 0 0 2px #bd8258, 0 3px #1c1225;
-    color: #2b1a2d;
-}
-
 .menu-button:hover {
     background: #593a54;
-}
-
-.menu-button[data-menu-action='play']:hover {
-    background: #ffcf88;
 }
 
 .menu-button:focus-visible,

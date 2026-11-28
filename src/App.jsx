@@ -1,7 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
 import { GameView } from './components/GameView.jsx';
 import { prepareEntry } from './game/state/EntryFlow.js';
+import menuLayout from '../public/assets/ui/main-menu/layout.json';
 import './App.css';
+
+const [referenceWidth, referenceHeight] = menuLayout.referenceResolution;
+const logoSize = [761, 468];
+const { logo, buttons } = menuLayout.placement;
+const placements = [
+    { center: logo.center, size: [logo.width, logo.width * logoSize[1] / logoSize[0]] },
+    ...Object.values(buttons)
+];
+
+// Keep the entire control area in view when a centered cover would crop it.
+const safeSpan = (axis, referenceSize) => 2 * Math.max(...placements.map(({ center, size }) =>
+    Math.abs(center[axis] - referenceSize / 2) + size[axis] / 2 + 8
+));
+
+const stageStyle = {
+    '--menu-v7-ratio': referenceWidth / referenceHeight,
+    '--menu-v7-safe-width': referenceWidth / safeSpan(0, referenceWidth),
+    '--menu-v7-safe-height': referenceWidth / safeSpan(1, referenceHeight)
+};
+
+function placementStyle([x, y], width) {
+    return {
+        left: `${x / referenceWidth * 100}%`,
+        top: `${y / referenceHeight * 100}%`,
+        width: `${width / referenceWidth * 100}%`
+    };
+}
+
+const menuAsset = file => `${import.meta.env.BASE_URL}assets/ui/main-menu/${file}`;
 
 const checkpoints = {
     character_creator: {
@@ -28,6 +58,50 @@ const entryErrors = {
 
 function MenuButton({ children, ...props }) {
     return <button className="menu-button" type="button" {...props}>{children}</button>;
+}
+
+function AssetMenuButton({ asset, action = asset, label, onClick }) {
+    const [mouseHover, setMouseHover] = useState(false);
+    const [pointerPressed, setPointerPressed] = useState(false);
+    const [pressedKey, setPressedKey] = useState(null);
+    const placement = buttons[asset];
+
+    function keyDown(event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        // Space activates on release natively. Defer Enter to show its held state too.
+        if (event.key === 'Enter') event.preventDefault();
+        if (!event.repeat) setPressedKey(event.key);
+    }
+
+    function keyUp(event) {
+        if (event.key !== pressedKey) return;
+        setPressedKey(null);
+        if (event.key === 'Enter') event.currentTarget.click();
+    }
+
+    function pointerDown(event) {
+        if (event.button !== 0) return;
+        setMouseHover(event.pointerType === 'mouse');
+        setPointerPressed(true);
+    }
+
+    function pointerLeave() {
+        setMouseHover(false);
+        setPointerPressed(false);
+    }
+
+    return (
+        <button type="button" className="menu-v7-button" aria-label={label} data-menu-action={action}
+            data-mouse-hover={mouseHover} data-pressed={pointerPressed || pressedKey !== null}
+            style={placementStyle(placement.center, placement.size[0])} onClick={onClick}
+            onPointerEnter={event => setMouseHover(event.pointerType === 'mouse')}
+            onPointerLeave={pointerLeave} onPointerDown={pointerDown} onPointerUp={() => setPointerPressed(false)}
+            onPointerCancel={pointerLeave} onKeyDown={keyDown} onKeyUp={keyUp} onBlur={() => setPressedKey(null)}>
+            {Object.entries(menuLayout.buttons[asset].states).map(([state, file]) => (
+                <img key={state} className={`menu-v7-button-${state}`} src={menuAsset(file)} alt="" draggable={false} />
+            ))}
+        </button>
+    );
 }
 
 function App() {
@@ -61,6 +135,24 @@ function App() {
     if (page.screen === 'game') return <GameView entry={page.entry} onBack={back} />;
 
     const { entry, screen } = page;
+    if (screen === 'menu') {
+        return (
+            <main className="app menu-v7" data-reduced-motion={reducedMotion}>
+                <div className="menu-v7-stage" style={stageStyle}>
+                    <img className="menu-v7-background" src={menuAsset(menuLayout.background)} alt="" />
+                    <h1 className="menu-v7-logo" style={placementStyle(logo.center, logo.width)}>
+                        <img src={menuAsset(menuLayout.logo)} alt="PURGATONIC" width={logoSize[0]} height={logoSize[1]} />
+                    </h1>
+                    <nav className="menu-v7-nav" aria-label="Menu chính" ref={nav}>
+                        <AssetMenuButton asset="play" label="Chơi game" onClick={play} />
+                        <AssetMenuButton asset="settings" label="Cài đặt" onClick={() => open('settings')} />
+                        <AssetMenuButton asset="info" action="about" label="Thông tin" onClick={() => open('about')} />
+                    </nav>
+                </div>
+            </main>
+        );
+    }
+
     let title;
     let content;
 
@@ -110,19 +202,11 @@ function App() {
                     </div>
                     <h1>PURGATONIC</h1>
                 </div>
-                {screen === 'menu' ? (
-                    <nav className="menu-content" aria-label="Menu chính" ref={nav}>
-                        <MenuButton data-menu-action="play" onClick={play}>Chơi game</MenuButton>
-                        <MenuButton data-menu-action="settings" onClick={() => open('settings')}>Cài đặt</MenuButton>
-                        <MenuButton data-menu-action="about" onClick={() => open('about')}>Thông tin</MenuButton>
-                    </nav>
-                ) : (
-                    <section className="menu-content" key={screen} aria-labelledby="menu-panel-heading">
-                        <h2 id="menu-panel-heading" tabIndex={-1} ref={panelHeading}>{title}</h2>
-                        {content}
-                        <MenuButton onClick={back}>Quay lại</MenuButton>
-                    </section>
-                )}
+                <section className="menu-content" key={screen} aria-labelledby="menu-panel-heading">
+                    <h2 id="menu-panel-heading" tabIndex={-1} ref={panelHeading}>{title}</h2>
+                    {content}
+                    <MenuButton onClick={back}>Quay lại</MenuButton>
+                </section>
             </div>
         </main>
     );
